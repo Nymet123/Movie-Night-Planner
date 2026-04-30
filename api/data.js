@@ -1,13 +1,18 @@
 import { Redis } from '@upstash/redis';
 
-const redis = new Redis({
-  url: process.env.UPSTASH_REDIS_REST_URL,
-  token: process.env.UPSTASH_REDIS_REST_TOKEN,
-});
-
 const KV_KEY = 'movieNightPlanner_v2';
 
 export default async function handler(req, res) {
+  const url = process.env.KV_REST_API_URL;
+  const token = process.env.KV_REST_API_TOKEN;
+
+  if (!url || !token) {
+    console.error('[api/data] Missing KV_REST_API_URL or KV_REST_API_TOKEN');
+    return res.status(503).json({ error: 'Storage not configured' });
+  }
+
+  const redis = new Redis({ url, token });
+
   try {
     if (req.method === 'GET') {
       const data = await redis.get(KV_KEY);
