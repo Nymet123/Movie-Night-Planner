@@ -1,6 +1,7 @@
-import { createContext, useContext, useState, useEffect, useCallback } from 'react';
+import { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
 
 const STORAGE_KEY = 'movieNightPlanner_v2';
+const SAVE_DEBOUNCE_MS = 800;
 
 const defaultState = {
   settings: {
@@ -51,17 +52,60 @@ const DEMO_DATA = {
 const AppContext = createContext(null);
 
 export function AppProvider({ children }) {
-  const [state, setState] = useState(() => {
-    try {
-      const saved = localStorage.getItem(STORAGE_KEY);
-      if (saved) return { ...defaultState, ...JSON.parse(saved) };
-    } catch {}
-    return defaultState;
-  });
+  const [state, setState] = useState(defaultState);
+  const [isLoading, setIsLoading] = useState(true);
+  const [syncError, setSyncError] = useState(null);
+  const saveTimerRef = useRef(null);
+  const loadedRef = useRef(false);
 
+  // On mount: load from Upstash Redis via /api/data, fall back to localStorage
   useEffect(() => {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+    let cancelled = false;
+    async function loadData() {
+      let loaded = null;
+      try {
+        const res = await fetch('/api/data');
+        if (res.ok) loaded = await res.json();
+      } catch {}
+
+      if (!loaded) {
+        try {
+          const saved = localStorage.getItem(STORAGE_KEY);
+          if (saved) loaded = JSON.parse(saved);
+        } catch {}
+      }
+
+      if (!cancelled) {
+        if (loaded) setState({ ...defaultState, ...loaded });
+        loadedRef.current = true;
+        setIsLoading(false);
+      }
+    }
+    loadData();
+    return () => { cancelled = true; };
+  }, []);
+
+  // Debounced save to Upstash on every state change after initial load
+  useEffect(() => {
+    if (!loadedRef.current) return;
+
+    clearTimeout(saveTimerRef.current);
+    saveTimerRef.current = setTimeout(() => {
+      fetch('/api/data', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(state),
+      })
+        .then(r => r.ok ? setSyncError(null) : setSyncError('Sync failed'))
+        .catch(() => setSyncError('Cloud sync unavailable — changes saved locally'));
+
+      // Keep localStorage in sync as a local backup
+      try { localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); } catch {}
+    }, SAVE_DEBOUNCE_MS);
   }, [state]);
+
+  // Cleanup debounce timer on unmount
+  useEffect(() => () => clearTimeout(saveTimerRef.current), []);
 
   const updateSettings = useCallback((updates) =>
     setState(s => ({ ...s, settings: { ...s.settings, ...updates } })), []);
@@ -198,6 +242,8 @@ export function AppProvider({ children }) {
   return (
     <AppContext.Provider value={{
       ...state,
+      isLoading,
+      syncError,
       updateSettings,
       addMember,
       updateMember,

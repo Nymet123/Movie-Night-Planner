@@ -141,7 +141,7 @@ export default function SettingsPage() {
       <div className="card p-6 space-y-4">
         <h2 className="text-lg font-semibold text-white">Data Management</h2>
         <p className="text-sm text-gray-400">
-          All data is stored locally in your browser. Export to back it up.
+          Data is stored in Upstash Redis and synced across all devices. Export to keep a local backup.
         </p>
         <div className="grid grid-cols-2 gap-3">
           <button onClick={exportData} className="btn-secondary">
@@ -189,7 +189,7 @@ export default function SettingsPage() {
           <a href="https://www.themoviedb.org/" target="_blank" rel="noreferrer" className="text-amber-400/70 hover:text-amber-400">
             The Movie Database (TMDB)
           </a>
-          . Data stored locally — no account required.
+          . Data synced via Upstash Redis.
         </p>
       </div>
     </div>
